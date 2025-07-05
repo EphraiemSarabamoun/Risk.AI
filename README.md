@@ -16,3 +16,13 @@ To see a graphical view, run:
 ```bash
 python risk_board.py --draw
 ```
+
+## Play a Simple Game
+
+A minimal text-based game between a human and a bot is provided. Launch it with:
+
+```bash
+python risk_game.py
+```
+
+You will be prompted to enter attacks in the form `from to` or press Enter to skip your turn.
