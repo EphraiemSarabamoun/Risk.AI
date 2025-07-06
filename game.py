@@ -1,12 +1,20 @@
-"""Simple Risk-like game between a human and a bot."""
+"""Simple Risk-like game engine."""
 
 from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List
 
 from risk_board import Board
+
+
+class GamePhase(Enum):
+    DEPLOY = "DEPLOY"
+    ATTACK = "ATTACK"
+    FORTIFY = "FORTIFY"
+    GAME_OVER = "GAME_OVER"
 
 
 @dataclass
@@ -20,6 +28,9 @@ class Player:
 
 
 class Game:
+    def restart(self):
+        self.__init__()
+
     def __init__(self) -> None:
         self.board = Board()
         self.territory_owner: Dict[str, Player] = {}
@@ -27,109 +38,142 @@ class Game:
         self.human = Player("Human")
         self.bot = Player("Bot", is_bot=True)
         self.players = [self.human, self.bot]
+        
         self._setup()
+
+        self.phase = GamePhase.DEPLOY
+        self.reinforcements = self._calculate_reinforcements(self.human)
+        self.turn_player = self.human
+        self.fortified_this_turn = False
 
     def _setup(self) -> None:
         """Assign territories equally and place one army on each."""
-        territories = [t for ts in self.board.continents.values() for t in ts]
+        territories = list(self.board.adjacency.keys())
         random.shuffle(territories)
         turn = 0
         for terr in territories:
-            player = self.players[turn % 2]
+            player = self.players[turn % len(self.players)]
             player.territories.append(terr)
             self.territory_owner[terr] = player
             self.armies[terr] = 1
             turn += 1
 
-    def display_board(self) -> None:
-        """Print current ownership and armies for all territories."""
-        for terr in sorted(self.territory_owner.keys()):
-            owner = self.territory_owner[terr].name[0]
-            print(f"{terr:20} {owner} {self.armies[terr]}")
+    def _calculate_reinforcements(self, player: Player) -> int:
+        """Calculate reinforcements based on territories and continents."""
+        base = max(3, len(player.territories) // 3)
+        # Add continent bonuses later
+        return base
 
-    def attack(self, attacker: Player, from_terr: str, to_terr: str) -> None:
-        """Resolve an attack from one territory to another."""
+    def deploy(self, player: Player, terr: str, num_armies: int) -> bool:
+        if player != self.turn_player or self.phase != GamePhase.DEPLOY:
+            return False
+        if terr not in player.territories or num_armies > self.reinforcements:
+            return False
+        
+        self.armies[terr] += num_armies
+        self.reinforcements -= num_armies
+        return True
+
+    def attack(self, attacker: Player, from_terr: str, to_terr: str) -> Dict:
+        """Resolve an attack and return the result."""
+        if attacker != self.turn_player or self.phase != GamePhase.ATTACK:
+            return {"success": False, "error": "Not in attack phase."}
+        if from_terr not in attacker.territories or to_terr in attacker.territories:
+            return {"success": False, "error": "Invalid attack target."}
         if self.armies[from_terr] < 2:
-            print("Not enough armies to attack.")
-            return
+            return {"success": False, "error": "Not enough armies."}
         if to_terr not in self.board.adjacency[from_terr]:
-            print("Territories are not adjacent.")
-            return
-        if self.territory_owner[to_terr] == attacker:
-            print("Cannot attack your own territory.")
-            return
+            return {"success": False, "error": "Territories not adjacent."}
 
         attack_roll = random.randint(1, 6)
         defend_roll = random.randint(1, 6)
-        print(f"Attack roll: {attack_roll} - Defend roll: {defend_roll}")
+        
         if attack_roll > defend_roll:
             defender = self.territory_owner[to_terr]
             defender.territories.remove(to_terr)
             attacker.territories.append(to_terr)
             self.territory_owner[to_terr] = attacker
-            self.armies[from_terr] -= 1
-            self.armies[to_terr] = 1
-            print(f"{attacker.name} captured {to_terr}!")
+            self.armies[to_terr] = self.armies[from_terr] - 1
+            self.armies[from_terr] = 1
+            self._check_game_over()
+            return {"success": True, "conquered": True, "attack_roll": attack_roll, "defend_roll": defend_roll}
         else:
             self.armies[from_terr] -= 1
-            print(f"{attacker.name} lost one army in the attack.")
+            return {"success": True, "conquered": False, "attack_roll": attack_roll, "defend_roll": defend_roll}
+
+    def fortify(self, player: Player, from_terr: str, to_terr: str, num_armies: int) -> bool:
+        if player != self.turn_player or self.phase != GamePhase.FORTIFY or self.fortified_this_turn:
+            return False
+    def fortify(self, player: Player, from_terr: str, to_terr: str, armies: int) -> dict:
+        """Moves armies between two friendly territories."""
+        if player != self.players[self.current_player_index] or self.game_phase != 'fortify':
+            return {"success": False, "message": "Not the right player or phase to fortify."}
+        if self.has_fortified_this_turn:
+            return {"success": False, "message": "You can only fortify once per turn."}
+        if from_terr not in player.territories or to_terr not in player.territories:
+            return {"success": False, "message": "You must own both territories."}
+        if self.armies[from_terr] <= armies:
+            return {"success": False, "message": "Not enough armies to move (must leave at least 1)."}
+        if armies <= 0:
+            return {"success": False, "message": "Must move a positive number of armies."}
+        # For simplicity, we'll allow fortification between any two owned territories.
+        # A real game would require a path of friendly territories.
+
+        self.armies[from_terr] -= armies
+        self.armies[to_terr] += armies
+        self.has_fortified_this_turn = True
+        message = f"{player.name} fortified {to_terr} from {from_terr} with {armies} armies."
+        self.turn_log.append(message)
+        return {"success": True, "message": message}
+
+
+    def next_phase(self) -> dict:
+        """Transitions the game to the next phase or turn."""
+        player = self.players[self.current_player_index]
+        if self.game_phase == 'deploy':
+            if self.reinforcements_to_deploy > 0:
+                return {"success": False, "message": "You must deploy all your reinforcements."}
+            self.game_phase = 'attack'
+            message = f"Phase: Attack."
+            self.turn_log.append(message)
+            return {"success": True, "message": message}
+        
+        elif self.game_phase == 'attack':
+            self.game_phase = 'fortify'
+            message = f"Phase: Fortify."
+            self.turn_log.append(message)
+            return {"success": True, "message": message}
+        
+        elif self.game_phase == 'fortify':
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            self.start_turn()
+            return {"success": True, "message": "Turn ended."}
+        
+        return {"success": False, "message": "Invalid game state."}
 
     def bot_turn(self) -> None:
-        """Simple bot that attacks randomly if possible."""
-        random.shuffle(self.bot.territories)
-        for terr in self.bot.territories:
-            if self.armies[terr] < 2:
-                continue
-            targets = [t for t in self.board.adjacency[terr] if self.territory_owner[t] != self.bot]
-            if targets:
-                target = random.choice(targets)
-                print(f"Bot attacks from {terr} to {target}")
-                self.attack(self.bot, terr, target)
-                return
-        print("Bot passes.")
+        """Simple bot that plays its turn."""
+        bot = self.players[self.current_player_index]
+        if not bot.is_bot: return
 
-    def human_turn(self) -> bool:
-        """Handle the human player's turn. Returns False if quitting."""
-        while True:
-            action = input("Enter command (attack from to / pass / quit): ").strip()
-            if action == "pass":
-                return True
-            if action == "quit":
-                return False
-            parts = action.split()
-            if len(parts) == 3 and parts[0] == "attack":
-                _, from_terr, to_terr = parts
-                if from_terr not in self.human.territories:
-                    print("You do not own that territory.")
-                    continue
-                self.attack(self.human, from_terr, to_terr)
-                return True
-            print("Invalid command.")
+        # 1. Deploy
+        while self.reinforcements_to_deploy > 0:
+            terr_to_deploy = random.choice(bot.territories)
+            self.deploy(bot, terr_to_deploy, 1)
+        
+        self.next_phase() # Move to attack phase
 
-    def play(self) -> None:
-        """Main game loop."""
-        turn = 0
-        while self.human.has_territories() and self.bot.has_territories():
-            current_player = self.players[turn % 2]
-            print()
-            print("Current board:")
-            self.display_board()
-            print(f"{current_player.name}'s turn")
-            if current_player.is_bot:
-                self.bot_turn()
-            else:
-                if not self.human_turn():
-                    print("Quitting game.")
-                    return
-            turn += 1
-        winner = self.human if self.human.has_territories() else self.bot
-        print(f"{winner.name} wins!")
+        # 2. Attack
+        possible_attacks = []
+        for terr in bot.territories:
+            if self.armies[terr] > 1:
+                for neighbor in self.board.adjacency[terr]:
+                    if self.territory_owner[neighbor] != bot:
+                        possible_attacks.append((terr, neighbor))
+        
+        if possible_attacks:
+            from_terr, to_terr = random.choice(possible_attacks)
+            self.attack(bot, from_terr, to_terr)
 
-
-def main() -> None:
-    game = Game()
-    game.play()
-
-
-if __name__ == "__main__":
-    main()
+        self.next_phase() # Move to fortify phase
+        self.next_phase() # End turn

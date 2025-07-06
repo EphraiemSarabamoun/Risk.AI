@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Risk.AI</title>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+    <h1>Risk Game Board</h1>
+    <div id="legend">
+        <div class="legend-item"><span class="color-box human"></span> Human</div>
+        <div class="legend-item"><span class="color-box bot"></span> Bot</div>
+    </div>
+    <div id="game-controls">
+        <div id="game-status">Loading...</div>
+        <button id="action-btn" style="display: none;">End Attack Phase</button>
+        <button id="restart-btn">Restart Game</button>
+    </div>
+    <div id="mynetwork"></div>
+    <script type="text/javascript" src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

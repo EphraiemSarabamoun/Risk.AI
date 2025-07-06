@@ -222,6 +222,8 @@ def main() -> None:
     args = parser.parse_args()
 
     board = Board()
+    print(args.draw)
+    board.draw_board()
     if args.draw:
         board.draw_board()
     else:
