@@ -361,169 +361,84 @@ class Game:
         })
 
     def _bot_attack(self):
-        print("Starting bot attack sequence")
-        attack_attempts = 0
-        max_attacks = 5  # Limit number of attacks to prevent infinite loops
-        
-        # Add an action to show phase change
+        print("BOT ATTACK: --- Starting bot attack sequence ---")
         self.bot_actions.append({
             "type": "phase_change",
             "phase": "ATTACK",
             "message": "Bot begins attack phase"
         })
-        
-        while attack_attempts < max_attacks:
-            attack_attempts += 1
-            print(f"Bot attack attempt {attack_attempts}, current phase: {self.phase}")
-            
-            # If we're in ATTACK_MOVE phase, handle the move first
+
+        max_attacks = 15  # Safety limit for number of attack loops
+        for i in range(max_attacks):
+            print(f"\nBOT ATTACK: Loop {i + 1}/{max_attacks}. Current phase: {self.phase}")
+
+            if self.phase in [GamePhase.GAME_OVER, GamePhase.FORTIFY]:
+                print(f"BOT ATTACK: Phase is now {self.phase}. Ending attack sequence.")
+                break
+
             if self.phase == GamePhase.ATTACK_MOVE:
+                print("BOT ATTACK: Handling mandatory move after conquest.")
                 if self.conquest_move_details:
                     details = self.conquest_move_details
-                    print(f"Bot handling attack move after conquest: {details}")
-                    
-                    # Log move after conquest
-                    armies_to_move = details["max_move"]
-                    from_terr = details["from_terr"]
-                    to_terr = details["to_terr"]
-                    
-                    self.bot_actions.append({
-                        "type": "move_after_conquest",
-                        "from_terr": from_terr,
-                        "to_terr": to_terr,
-                        "armies": armies_to_move,
-                        "message": f"Bot moves {armies_to_move} armies from {from_terr} to conquered territory {to_terr}"
-                    })
-                    
-                    self.move_after_conquest(self.bot, armies_to_move)
+                    try:
+                        # Bot will move all but one army from the attacking territory
+                        armies_to_move = self.armies[details["from_terr"]] - 1
+                        if armies_to_move > 0:
+                            print(f"BOT ATTACK: Moving {armies_to_move} armies to new territory.")
+                            self.move_after_conquest(self.bot, armies_to_move)
+                        else:
+                            # This case should ideally not happen if an attack was successful
+                            print("BOT ATTACK: No armies to move. Switching back to ATTACK.")
+                            self.phase = GamePhase.ATTACK
+                    except Exception as e:
+                        print(f"BOT ATTACK: Error during move_after_conquest: {e}. Forcing FORTIFY.")
+                        self.phase = GamePhase.FORTIFY
                 else:
-                    print("ERROR: In ATTACK_MOVE phase but no conquest details found")
-                    self.phase = GamePhase.ATTACK  # Force back to attack phase
-            
-            # If game is over after a conquest, stop attacking
-            if self.phase == GamePhase.GAME_OVER:
-                print("Game over detected during bot attack, stopping attacks")
-                self.bot_actions.append({
-                    "type": "game_over",
-                    "message": "Bot has won the game!"
-                })
-                return
-            
-            # If we're not in ATTACK phase, something went wrong
+                    print("BOT ATTACK: ERROR - In ATTACK_MOVE with no details. Forcing FORTIFY.")
+                    self.phase = GamePhase.FORTIFY
+                continue # Restart loop to re-evaluate the game state
+
             if self.phase != GamePhase.ATTACK:
-                print(f"ERROR: Unexpected phase {self.phase} during bot attack sequence")
-                return
-            
-            # Find possible attacks
+                print(f"BOT ATTACK: Phase is {self.phase}, not ATTACK. Exiting.")
+                break
+
+            # Find all possible attacks the bot can make
             attacks = []
-            for t in [terr for terr in self.bot.get_territories(self) if self.armies[t] > 1]:
-                for n in self.board.adjacency[t]:
-                    if self.territory_owner.get(n) == self.human and self.armies[t] > self.armies[n] * 1.5:
-                        attacks.append((t, n))
-
+            bot_territories = self.bot.get_territories(self)
+            for t in bot_territories:
+                if self.armies.get(t, 0) > 1:  # Territory must have more than 1 army to attack
+                    for n in self.board.adjacency.get(t, []):
+                        if self.territory_owner.get(n) == self.human:
+                            # Simple logic: attack if the bot has more armies
+                            if self.armies[t] > self.armies.get(n, 0):
+                                attacks.append((t, n))
+            
             if not attacks:
-                print("No viable attacks found for bot")
-                self.bot_actions.append({
-                    "type": "attack_end",
-                    "message": "Bot has no more viable attacks"
-                })
-                break
+                print("BOT ATTACK: No more viable attacks. Moving to FORTIFY.")
+                self.phase = GamePhase.FORTIFY
+                break # Exit the attack loop
 
-            # Choose the best attack
-            from_terr, to_terr = max(attacks, key=lambda a: self.armies[a[0]] / self.armies[a[1]])
+            # Bot chooses the best attack (from its strongest territory)
+            from_terr, to_terr = max(attacks, key=lambda att: self.armies[att[0]])
             num_attackers = min(3, self.armies[from_terr] - 1)
-            print(f"Bot attacking from {from_terr} ({self.armies[from_terr]} armies) to {to_terr} ({self.armies[to_terr]} armies) with {num_attackers} armies")
             
-            # Log attack intent
-            self.bot_actions.append({
-                "type": "attack_intent",
-                "from_terr": from_terr,
-                "to_terr": to_terr,
-                "armies": num_attackers,
-                "message": f"Bot attacks from {from_terr} ({self.armies[from_terr]} armies) to {to_terr} ({self.armies[to_terr]} armies) with {num_attackers} armies"
-            })
+            if num_attackers <= 0:
+                print(f"BOT ATTACK: Logic error, num_attackers is {num_attackers}. Skipping attack.")
+                continue
+
+            print(f"BOT ATTACK: Attacking {to_terr} from {from_terr} with {num_attackers} armies.")
+            # The self.attack() method will handle dice rolls, army updates, and phase changes
+            self.attack(self.bot, from_terr, to_terr, num_attackers)
+
+        else:  # This 'else' belongs to the 'for' loop, runs if it completes without 'break'
+            print("BOT ATTACK: Reached max attack loops.")
+
+        # After the loop, if the phase is still ATTACK, it means the loop finished without finding attacks or hit its limit.
+        if self.phase == GamePhase.ATTACK:
+            print("BOT ATTACK: Loop finished. Forcing phase to FORTIFY.")
+            self.phase = GamePhase.FORTIFY
             
-            # Perform the attack
-            result = self.attack(self.bot, from_terr, to_terr, num_attackers)
-            
-            if not result.get("success"):
-                print(f"Attack failed: {result.get('error', 'unknown error')}")
-                self.bot_actions.append({
-                    "type": "attack_error",
-                    "message": f"Attack failed: {result.get('error', 'unknown error')}"
-                })
-                break
-            
-            # Log attack result
-            attack_rolls = result.get('attack_rolls', [])
-            defend_rolls = result.get('defend_rolls', [])
-            attack_losses = result.get('attack_losses', 0)
-            defend_losses = result.get('defend_losses', 0)
-            
-            print(f"Attack result: Attacker lost {attack_losses}, Defender lost {defend_losses}")
-            
-            self.bot_actions.append({
-                "type": "attack_result",
-                "attack_rolls": attack_rolls,
-                "defend_rolls": defend_rolls,
-                "attack_losses": attack_losses,
-                "defend_losses": defend_losses,
-                "message": f"Attack result: Bot rolls {attack_rolls}, Human rolls {defend_rolls}. Bot lost {attack_losses} armies, Human lost {defend_losses} armies."
-            })
-            
-            if result.get("conquered"):
-                print(f"Bot conquered {to_terr} from {from_terr}!")
-                self.bot_actions.append({
-                    "type": "conquest",
-                    "from_terr": from_terr,
-                    "to_terr": to_terr,
-                    "message": f"Bot conquered {to_terr}!"
-                })
-                
-                # If bot received a card for conquest, log it
-                if self.bot.conquered_territory_this_turn:
-                    if len(self.bot.cards) > 0 and result.get("card_received"):
-                        latest_card = self.bot.cards[-1]
-                        self.bot_actions.append({
-                            "type": "card_received",
-                            "territory": latest_card.territory,
-                            "card_type": latest_card.card_type,
-                            "message": f"Bot received a {latest_card.card_type} card for {latest_card.territory}"
-                        })
-                # Don't break here - continue with the next iteration of the loop
-                # which will handle the ATTACK_MOVE phase at the beginning
-            else:
-                # Only try a few times if not conquering
-                if attack_attempts >= 3 and not result.get("conquered"):
-                    print("Bot giving up attacks after multiple unsuccessful attempts")
-                    self.bot_actions.append({
-                        "type": "attack_end",
-                        "message": "Bot ends attack phase after multiple attempts"
-                    })
-                    break
-        
-        print("Bot attack sequence complete")
-        # Ensure we're in the ATTACK phase when done
-        if self.phase == GamePhase.ATTACK_MOVE:
-            if self.conquest_move_details:
-                print("Handling final attack move before exiting attack sequence")
-                details = self.conquest_move_details
-                armies_to_move = details["max_move"]
-                from_terr = details["from_terr"]
-                to_terr = details["to_terr"]
-                
-                self.bot_actions.append({
-                    "type": "move_after_conquest",
-                    "from_terr": from_terr,
-                    "to_terr": to_terr,
-                    "armies": armies_to_move,
-                    "message": f"Bot moves {armies_to_move} armies from {from_terr} to conquered territory {to_terr}"
-                })
-                
-                self.move_after_conquest(self.bot, armies_to_move)
-            else:
-                print("ERROR: In ATTACK_MOVE phase with no details when exiting attack sequence")
-                self.phase = GamePhase.ATTACK
+        print(f"BOT ATTACK: --- Bot attack sequence complete. Final phase: {self.phase} ---")
 
     def _bot_fortify(self):
         print("Starting bot fortify sequence")
@@ -622,7 +537,7 @@ class Game:
             "type": "turn_end",
             "message": "Bot ends turn"
         })
-
+        
     def _is_frontier(self, territory: str) -> bool:
         owner = self.territory_owner[territory]
         return any(self.territory_owner[n] != owner for n in self.board.adjacency[territory])
@@ -654,5 +569,82 @@ class Game:
             print(f"Transitioning to DEPLOY phase for player {next_player.name} with {self.reinforcements} reinforcements")
 
             if next_player.is_bot:
-                print(f"Bot turn detected - calling run_bot_turn()")
-                self.run_bot_turn()
+                print(f"Bot turn detected - preparing bot actions")
+                # Instead of calling run_bot_turn directly, we'll prepare bot actions
+                # and let them be fetched via API
+                self.prepare_bot_actions()
+
+    def prepare_bot_actions(self):
+        """Prepare bot actions queue without executing them"""
+        print("Preparing bot actions for async execution")
+        # Clear existing actions
+        self.bot_actions = []
+        
+        # Add initial phase change action
+        self.bot_actions.append({
+            "type": "phase_change",
+            "phase": "DEPLOY",
+            "message": "Bot begins turn"
+        })
+
+    def run_bot_turn(self):
+        print("Starting bot turn execution")
+        
+        # Check if it's actually the bot's turn
+        if self.players[self.current_player_index] != self.bot:
+            print(f"ERROR: Not the bot's turn! Current player is {self.players[self.current_player_index].name}")
+            return
+            
+        if self.phase == GamePhase.GAME_OVER:
+            print("Game is over, bot turn skipped")
+            return
+            
+        if not self.bot.has_territories(self):
+            print("Bot has no territories, ending game")
+            self.phase = GamePhase.GAME_OVER
+            return
+        
+        print(f"Bot is player {self.current_player_index}, starting actions")
+        
+        # Set up initial actions if not already done
+        if not self.bot_actions:
+            self.bot_actions.append({
+                "type": "turn_start",
+                "message": "Bot begins turn"
+            })
+        
+        # Deploy phase
+        print(f"Bot starting DEPLOY phase with {self.reinforcements} reinforcements")
+        self._bot_deploy()
+        
+        # Attack phase
+        if self.phase != GamePhase.GAME_OVER:
+            print("Bot starting ATTACK phase")
+            self.phase = GamePhase.ATTACK  # Explicitly set to ATTACK
+            self._bot_attack()
+            
+        # Fortify phase
+        if self.phase != GamePhase.GAME_OVER and self.phase != GamePhase.ATTACK_MOVE:
+            print("Bot starting FORTIFY phase")
+            self.phase = GamePhase.FORTIFY  # Explicitly set to FORTIFY
+            self._bot_fortify()
+            
+        # Move to next player
+        if self.phase != GamePhase.GAME_OVER:
+            print("Bot turn complete, moving to next player")
+            # Do not call next_phase here as that would trigger another bot turn
+            self.current_player_index = (self.current_player_index + 1) % len(self.players)
+            next_player = self.players[self.current_player_index]
+            self.phase = GamePhase.DEPLOY
+            self.reinforcements = self._calculate_reinforcements(next_player)
+            self.fortified_this_turn = False
+            
+            self.bot_actions.append({
+                "type": "next_player",
+                "player": next_player.name,
+                "message": f"Next player: {next_player.name}"
+            })
+            
+            print(f"Next player: {next_player.name}")
+            
+        print("Bot turn execution complete")

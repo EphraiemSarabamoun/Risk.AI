@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 from game import Game, GamePhase
+import json
 
 app = Flask(__name__)
 game = Game()
@@ -107,6 +108,36 @@ def trade_in_cards():
 def restart():
     game.restart()
     return jsonify({"success": True})
+
+@app.route('/api/bot_action', methods=['GET'])
+def bot_action():
+    # Return the next bot action from the queue, or empty if none left
+    if game.bot_actions:
+        action = game.bot_actions.pop(0)
+        return jsonify({"action": action})
+    else:
+        return jsonify({"action": None})
+
+@app.route('/api/execute_bot_turn', methods=['POST'])
+def execute_bot_turn():
+    # Execute the bot's turn if it's currently the bot's turn
+    print(f"Execute bot turn called. Current player index: {game.current_player_index}")
+    print(f"Current player: {game.players[game.current_player_index].name}, is_bot: {game.players[game.current_player_index].is_bot}")
+    
+    if game.current_player_index < len(game.players) and game.players[game.current_player_index].is_bot:
+        try:
+            print("Starting bot turn execution")
+            game.run_bot_turn()
+            print("Bot turn execution completed successfully")
+            return jsonify({"success": True, "message": "Bot turn executed successfully"})
+        except Exception as e:
+            print(f"Error executing bot turn: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"success": False, "error": str(e)}), 500
+    else:
+        print("Attempted to execute bot turn but it's not the bot's turn")
+        return jsonify({"success": False, "error": "Not the bot's turn"}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

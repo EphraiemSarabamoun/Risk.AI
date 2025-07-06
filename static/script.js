@@ -57,26 +57,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-            if (!response.ok) {
-                const errorResult = await response.json();
-                throw new Error(errorResult.error || 'API request failed');
-            }
-            const result = await response.json();
             
-            if (url === '/api/attack' && result.success) {
-                let message = `Attack Results:\n` +
-                              `Attacker rolls: ${result.attack_rolls.join(', ')}\n` +
-                              `Defender rolls: ${result.defend_rolls.join(', ')}\n` +
-                              `Attacker lost: ${result.attack_losses} armies\n` +
-                              `Defender lost: ${result.defend_losses} armies`;
-                if (result.conquered) {
-                    message += `\n\nYou conquered ${result.conquest_move_details.to_terr}!`;
+            if (!response.ok) {
+                // Check content type to avoid parsing HTML as JSON
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorResult = await response.json();
+                    throw new Error(errorResult.error || 'API request failed');
+                } else {
+                    throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                 }
-                alert(message);
             }
+            
+            // Safely parse JSON response
+            try {
+                const result = await response.json();
+                
+                if (url === '/api/attack' && result.success) {
+                    let message = `Attack Results:\n` +
+                                  `Attacker rolls: ${result.attack_rolls.join(', ')}\n` +
+                                  `Defender rolls: ${result.defend_rolls.join(', ')}\n` +
+                                  `Attacker lost: ${result.attack_losses} armies\n` +
+                                  `Defender lost: ${result.defend_losses} armies`;
+                    if (result.conquered) {
+                        message += `\n\nYou conquered ${result.conquest_move_details.to_terr}!`;
+                    }
+                    alert(message);
+                }
 
-            await fetchGameState(); // Refresh state after every action
-            return result;
+                await fetchGameState(); // Refresh state after every action
+                return result;
+            } catch (jsonError) {
+                console.error('JSON parsing error:', jsonError);
+                throw new Error('Failed to parse server response');
+            }
         } catch (error) {
             console.error('API POST error:', error);
             alert(`Error: ${error.message}`);
@@ -469,6 +483,25 @@ Next card set will be worth ${result.next_bonus} reinforcements.`);
         if (botActionEl) botActionEl.style.display = 'block';
         
         try {
+            // Execute the bot turn first
+            console.log('Executing bot turn');
+            try {
+                const executeBotTurnResponse = await fetch('/api/execute_bot_turn', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const executeBotResult = await executeBotTurnResponse.json();
+                console.log('Bot turn execution result:', executeBotResult);
+                
+                if (!executeBotResult.success) {
+                    console.error('Failed to execute bot turn:', executeBotResult.error);
+                }
+            } catch (error) {
+                console.error('Error executing bot turn:', error);
+            }
+            
+            // Now process bot actions
             while (gameState.current_player === 'Bot' && !gameState.winner) {
                 // Fetch next bot action
                 const response = await fetch('/api/bot_action');
