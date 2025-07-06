@@ -11,10 +11,13 @@ from typing import Dict, List
 class Board:
     continents: Dict[str, List[str]] = field(default_factory=dict)
     adjacency: Dict[str, List[str]] = field(default_factory=dict)
+    continent_bonuses: Dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._init_continents()
         self._init_adjacency()
+        self._init_positions()
+        self._init_continent_bonuses()
 
     def _init_continents(self) -> None:
         self.continents = {
@@ -178,6 +181,108 @@ class Board:
             "Eastern Australia": ["New Guinea", "Western Australia"],
         }
         self.adjacency = a
+
+    def _init_continent_bonuses(self) -> None:
+        self.continent_bonuses = {
+            "North America": 5,
+            "South America": 2,
+            "Europe": 5,
+            "Africa": 3,
+            "Asia": 7,
+            "Australia": 2,
+        }
+
+    def _init_positions(self) -> None:
+        self.positions = {
+            # North America
+            'Alaska': (10, 100),
+            'Northwest Territory': (150, 100),
+            'Greenland': (400, 80),
+            'Alberta': (150, 200),
+            'Ontario': (250, 200),
+            'Quebec': (350, 200),
+            'Western United States': (150, 300),
+            'Eastern United States': (250, 300),
+            'Central America': (150, 400),
+            # South America
+            'Venezuela': (200, 500),
+            'Peru': (200, 600),
+            'Brazil': (300, 550),
+            'Argentina': (250, 700),
+            # Europe
+            'Iceland': (500, 150),
+            'Scandinavia': (600, 150),
+            'Great Britain': (500, 250),
+            'Northern Europe': (600, 250),
+            'Western Europe': (500, 350),
+            'Southern Europe': (600, 350),
+            'Ukraine': (700, 200),
+            # Africa
+            'North Africa': (550, 500),
+            'Egypt': (650, 450),
+            'East Africa': (700, 550),
+            'Congo': (650, 650),
+            'South Africa': (650, 750),
+            'Madagascar': (780, 780),
+            # Asia
+            'Ural': (800, 200),
+            'Siberia': (900, 150),
+            'Yakutsk': (1000, 100),
+            'Kamchatka': (1100, 100),
+            'Irkutsk': (950, 250),
+            'Mongolia': (1000, 320),
+            'Japan': (1150, 280),
+            'Afghanistan': (800, 300),
+            'Middle East': (750, 400),
+            'India': (850, 480),
+            'Siam': (950, 500),
+            'China': (900, 380),
+            # Australia
+            'Indonesia': (1000, 600),
+            'New Guinea': (1100, 600),
+            'Western Australia': (1000, 700),
+            'Eastern Australia': (1100, 700),
+        }
+
+    def are_connected(self, terr1, terr2, player, territory_owner):
+        """Check if two territories are connected by a path of territories owned by the player."""
+        if terr1 not in self.adjacency or terr2 not in self.adjacency:
+            return False
+
+        q = [terr1]
+        visited = {terr1}
+
+        while q:
+            current = q.pop(0)
+            if current == terr2:
+                return True
+            
+            for neighbor in self.adjacency[current]:
+                if neighbor not in visited and territory_owner.get(neighbor) == player:
+                    visited.add(neighbor)
+                    q.append(neighbor)
+        
+        return False
+
+    def are_connected(self, terr1: str, terr2: str, player: 'Player', territory_owner: Dict[str, 'Player']) -> bool:
+        """Check if two territories are connected by a path of territories owned by the player."""
+        if terr1 not in self.adjacency or terr2 not in self.adjacency:
+            return False
+
+        q = [terr1]
+        visited = {terr1}
+
+        while q:
+            current = q.pop(0)
+            if current == terr2:
+                return True
+            
+            for neighbor in self.adjacency[current]:
+                if neighbor not in visited and territory_owner.get(neighbor) == player:
+                    visited.add(neighbor)
+                    q.append(neighbor)
+        
+        return False
 
     def print_board(self) -> None:
         for continent, territories in self.continents.items():

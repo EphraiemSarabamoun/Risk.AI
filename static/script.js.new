@@ -6,8 +6,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const restartBtn = document.getElementById('restart-btn');
     const playerHandContainer = document.getElementById('player-hand-container');
     const tradeInBtn = document.getElementById('trade-in-btn');
-    const botActionEl = document.getElementById('bot-action');
-    const cardRulesEl = document.getElementById('card-rules');
 
     // Game state variables
     let network = null;
@@ -15,8 +13,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let selectedTerritory = null;
     let nodes, edges;
     let selectedCards = [];
-    let isProcessingBotActions = false;
-    let nextCardTradeInBonus = 4; // Initial trade-in bonus
 
     // Player colors
     const playerColors = {
@@ -99,18 +95,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 playerHandContainer.style.display = 'block';
             }
 
-            // Display card rules info
-            updateCardRules();
-
             if (gameState.phase === 'ATTACK_MOVE' && gameState.current_player === 'Human' && gameState.conquest_move_details) {
                 // Use a timeout to ensure the user sees the board update before the prompt
                 setTimeout(handleAttackMove, 100); 
-            }
-            
-            // Check if it's the bot's turn and start polling for bot actions
-            if (gameState.current_player === 'Bot' && !isProcessingBotActions) {
-                isProcessingBotActions = true;
-                processBotActions();
             }
         } catch (error) {
             console.error('Error fetching game state:', error);
@@ -195,17 +182,6 @@ document.addEventListener('DOMContentLoaded', function() {
             cards.forEach((card, index) => {
                 const cardEl = document.createElement('div');
                 cardEl.className = 'card';
-                
-                // Add visual styling based on card type
-                if (card.card_type === null) {
-                    cardEl.classList.add('wildcard');
-                } else if (card.card_type === 'Infantry') {
-                    cardEl.classList.add('infantry');
-                } else if (card.card_type === 'Cavalry') {
-                    cardEl.classList.add('cavalry');
-                } else if (card.card_type === 'Artillery') {
-                    cardEl.classList.add('artillery');
-                }
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
@@ -217,8 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 const label = document.createElement('label');
                 label.htmlFor = `card-${index}`;
-                const cardType = card.card_type === null ? 'Wildcard' : card.card_type;
-                label.innerHTML = `<strong>${card.territory}</strong><br>(${cardType})`;
+                label.innerHTML = `<strong>${card.territory}</strong><br>(${card.card_type})`;
 
                 cardEl.appendChild(checkbox);
                 cardEl.appendChild(label);
@@ -439,81 +414,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const result = await apiPost('/api/trade_in_cards', { card_indices: selectedCards });
         if (result && result.success) {
-            alert(`Cards traded in successfully! You received ${result.bonus} reinforcements.
-Next card set will be worth ${result.next_bonus} reinforcements.`);
-            nextCardTradeInBonus = result.next_bonus;
+            alert(`Cards traded in successfully! Your reinforcements have been updated.`);
             selectedCards = []; // Clear selection
-            updateCardRules(); // Update the card rules display with new bonus value
-        }
-    }
-
-    // Function to update card trade-in rules info
-    function updateCardRules() {
-        if (!cardRulesEl) return;
-        
-        cardRulesEl.innerHTML = `
-            <h3>Card Trade-in Rules</h3>
-            <p>Current trade-in bonus: <strong>${nextCardTradeInBonus} armies</strong></p>
-            <p>Valid card sets:</p>
-            <ul>
-                <li>3 cards of the same type (Infantry, Cavalry, or Artillery)</li>
-                <li>1 card of each type (1 Infantry + 1 Cavalry + 1 Artillery)</li>
-                <li>Any set including Wildcards</li>
-            </ul>
-            <p>You receive a card when you conquer at least one territory during your turn.</p>
-        `;
-    }
-
-    // Function to process bot actions one by one
-    async function processBotActions() {
-        if (botActionEl) botActionEl.style.display = 'block';
-        
-        try {
-            while (gameState.current_player === 'Bot' && !gameState.winner) {
-                // Fetch next bot action
-                const response = await fetch('/api/bot_action');
-                const result = await response.json();
-                
-                if (!result || !result.action) {
-                    console.log('No more bot actions');
-                    break;
-                }
-                
-                const action = result.action;
-                console.log('Bot action:', action);
-                
-                // Display the bot action
-                if (botActionEl) {
-                    botActionEl.innerHTML = `<strong>Bot Action:</strong> ${action.message}`;
-                    botActionEl.classList.add('highlight');
-                    
-                    // Remove highlight after a moment
-                    setTimeout(() => {
-                        botActionEl.classList.remove('highlight');
-                    }, 1000);
-                }
-                
-                // Special handling for different action types
-                if (action.type === 'game_over') {
-                    alert('Game over! Bot has won!');
-                    break;
-                }
-                
-                // Wait before proceeding to next action (for visual effect)
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                // Refresh game state after each action to see changes
-                await fetchGameState();
-            }
-            
-            // Final refresh after all actions
-            await fetchGameState();
-            
-        } catch (error) {
-            console.error('Error processing bot actions:', error);
-        } finally {
-            isProcessingBotActions = false;
-            if (botActionEl) botActionEl.style.display = 'none';
         }
     }
 

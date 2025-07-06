@@ -8,116 +8,22 @@ game = Game()
 def index():
     return render_template('index.html')
 
-# Mapping from risk_board.py names to the names in our coordinate file
-territory_name_map = {
-    "Northwest Territory": "Northwest Territories",
-    "Western United States": "Western U.S.",
-    "Eastern United States": "Eastern U.S.",
-    "Central America": "Mexico",
-    "Venezuela": "Colombia",
-    "Argentina": "Chile",
-    "North Africa": "Western Africa",
-    "East Africa": "Ethiopia",
-    "Congo": "Zaire",
-    "Scandinavia": "Sweden",
-    "Northern Europe": "Central Europe",
-    "Ukraine": "Ukraine", # same
-    "Great Britain": "Great Britain", # same
-    "Southern Europe": "Southern Europe", # same
-    "Ural": "Russia",
-    "Siam": "Laos",
-    "Mongolia": "Manchuria",
-    "Afghanistan": "Pakistan",
-    # Territories that need a new name/location from the classic board
-    "Alberta": "British Columbia", 
-    "Peru": "Peru", # same
-    "Brazil": "Brazil", # same
-    "Iceland": "Iceland", # same
-    "Egypt": "Egypt", # same
-    "South Africa": "South Africa", # same
-    "Madagascar": "Madagascar", # same
-    "Siberia": "Siberia", # same
-    "Yakutsk": "Eastern Russia",
-    "Kamchatka": "Kamchatka", # same
-    "Irkutsk": "Irkutsk", # same
-    "Japan": "Japan", # same
-    "Middle East": "Middle East", # same
-    "India": "India", # same
-    "China": "China", # same
-    "Indonesia": "Indonesia", # same
-    "New Guinea": "New Guinea", # same
-    "Western Australia": "Western Australia", # same
-    "Eastern Australia": "Eastern Australia", # same
-    "Alaska": "Alaska", # same
-    "Greenland": "Greenland", # same
-    "Ontario": "Ontario", # same
-    "Quebec": "Quebec", # same
-}
-
-territory_coordinates = {
-    "Alaska": {"x": 72, "y": 109},
-    "Northwest Territories": {"x": 134, "y": 99},
-    "Greenland": {"x": 219, "y": 88},
-    "British Columbia": {"x": 126, "y": 144},
-    "Ontario": {"x": 178, "y": 155},
-    "Quebec": {"x": 234, "y": 163},
-    "Western U.S.": {"x": 137, "y": 204},
-    "Eastern U.S.": {"x": 192, "y": 210},
-    "Mexico": {"x": 169, "y": 259},
-    "Colombia": {"x": 215, "y": 297},
-    "Brazil": {"x": 251, "y": 339},
-    "Peru": {"x": 207, "y": 356},
-    "Chile": {"x": 224, "y": 415},
-    "South Africa": {"x": 378, "y": 389},
-    "Zaire": {"x": 370, "y": 340},
-    "Ethiopia": {"x": 403, "y": 318},
-    "Western Africa": {"x": 332, "y": 294},
-    "Egypt": {"x": 384, "y": 275},
-    "Madagascar": {"x": 433, "y": 383},
-    "Western Europe": {"x": 341, "y": 229},
-    "Great Britain": {"x": 333, "y": 194},
-    "Iceland": {"x": 302, "y": 152},
-    "Sweden": {"x": 367, "y": 155},
-    "Central Europe": {"x": 375, "y": 198},
-    "Southern Europe": {"x": 392, "y": 215},
-    "Ukraine": {"x": 425, "y": 175},
-    "Middle East": {"x": 427, "y": 250},
-    "Pakistan": {"x": 474, "y": 226},
-    "Russia": {"x": 501, "y": 153},
-    "India": {"x": 501, "y": 267},
-    "Laos": {"x": 554, "y": 286},
-    "China": {"x": 558, "y": 240},
-    "Manchuria": {"x": 606, "y": 207},
-    "Japan": {"x": 666, "y": 220},
-    "Siberia": {"x": 566, "y": 145},
-    "Irkutsk": {"x": 617, "y": 166},
-    "Eastern Russia": {"x": 655, "y": 112},
-    "Kamchatka": {"x": 703, "y": 149},
-    "Indonesia": {"x": 604, "y": 328},
-    "New Guinea": {"x": 671, "y": 331},
-    "Western Australia": {"x": 636, "y": 389},
-    "Eastern Australia": {"x": 679, "y": 388}
-}
-
 @app.route('/api/game_state')
 def get_game_state():
     nodes = []
-    for territory in game.board.adjacency.keys():
-        mapped_name = territory_name_map.get(territory, territory)
-        coords = territory_coordinates.get(mapped_name)
+    for territory, (x, y) in game.board.positions.items():
         owner = game.territory_owner[territory]
         armies = game.armies[territory]
         
-        node = {
+        nodes.append({
             "id": territory,
             "label": f"{territory}\n{armies}",
             "group": owner.name,
-            "owner": owner.name
-        }
-        if coords:
-            node['x'] = coords['x'] * 2
-            node['y'] = coords['y'] * 2
-        nodes.append(node)
+            "owner": owner.name,
+            "x": x * 1.5, # Scaling factor for better spacing
+            "y": y * 1.5  # Scaling factor for better spacing
+        })
+
 
     edges = []
     for territory, neighbors in game.board.adjacency.items():
@@ -125,49 +31,82 @@ def get_game_state():
             if territory < neighbor:
                 edges.append({"from": territory, "to": neighbor})
 
-    winner = None
-    if game.phase == GamePhase.GAME_OVER:
-        winner = game.human.name if game.human.has_territories() else game.bot.name
+    human_cards = [
+        {"territory": card.territory, "card_type": card.card_type} 
+        for card in game.human.cards
+    ]
 
-    return jsonify({
+    state = {
         "nodes": nodes,
         "edges": edges,
         "phase": game.phase.value,
-        "reinforcements": game.reinforcements,
         "players": [p.name for p in game.players],
-        "winner": winner
-    })
+        "reinforcements": game.reinforcements,
+        "winner": None,
+        "current_player": game.players[game.current_player_index].name,
+        "human_cards": human_cards,
+        "conquest_move_details": game.conquest_move_details
+    }
+    
+    if game.phase == GamePhase.GAME_OVER:
+        winner_name = [p.name for p in game.players if p.has_territories(game)][0]
+        state["winner"] = winner_name
+
+    return jsonify(state)
 
 @app.route('/api/deploy', methods=['POST'])
 def deploy():
     data = request.json
-    success = game.deploy(game.human, data['territory'], data['armies'])
+    territory = data["territory"]
+    armies = int(data["armies"])
+    success = game.deploy(game.human, territory, armies)
     if success and game.reinforcements == 0:
         game.next_phase()
-    return jsonify({'success': success, 'phase': game.phase.value})
+    return jsonify({"success": success})
 
 @app.route('/api/attack', methods=['POST'])
 def attack():
     data = request.json
-    result = game.attack(game.human, data['from_terr'], data['to_terr'])
+    from_terr = data["from_terr"]
+    to_terr = data["to_terr"]
+    armies = int(data.get("armies", 1))
+    result = game.attack(game.human, from_terr, to_terr, armies)
+    return jsonify(result)
+
+@app.route('/api/move_after_conquest', methods=['POST'])
+def move_after_conquest():
+    data = request.json
+    num_armies = int(data['armies'])
+    result = game.move_after_conquest(game.human, num_armies)
     return jsonify(result)
 
 @app.route('/api/fortify', methods=['POST'])
 def fortify():
     data = request.json
-    success = game.fortify(game.human, data['from_terr'], data['to_terr'], data['armies'])
-    return jsonify({'success': success})
-
+    from_terr = data["from_terr"]
+    to_terr = data["to_terr"]
+    armies = int(data["armies"])
+    success = game.fortify(game.human, from_terr, to_terr, armies)
+    return jsonify({"success": success})
 
 @app.route('/api/next_phase', methods=['POST'])
 def next_phase():
+    if game.phase == GamePhase.ATTACK_MOVE:
+        return jsonify({"success": False, "error": "Must move armies after conquest before ending phase."})
     game.next_phase()
-    return jsonify({'phase': game.phase.value, 'reinforcements': game.reinforcements})
+    return jsonify({"success": True})
+
+@app.route('/api/trade_in_cards', methods=['POST'])
+def trade_in_cards():
+    data = request.json
+    card_indices = data.get("card_indices", [])
+    result = game.trade_in_cards(game.human, card_indices)
+    return jsonify(result)
 
 @app.route('/api/restart', methods=['POST'])
 def restart():
     game.restart()
-    return jsonify({'success': True})
+    return jsonify({"success": True})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

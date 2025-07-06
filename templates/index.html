@@ -4,6 +4,61 @@
     <title>Risk.AI</title>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
     <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        /* Additional styles for bot actions and card display */
+        #bot-action {
+            background-color: #f0f0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 16px;
+            display: none;
+        }
+        
+        #bot-action.highlight {
+            background-color: #ffe066;
+            transition: background-color 0.3s;
+        }
+        
+        .card {
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin: 5px;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+        }
+        
+        .card.infantry {
+            border-left: 5px solid #4169E1;
+        }
+        
+        .card.cavalry {
+            border-left: 5px solid #228B22;
+        }
+        
+        .card.artillery {
+            border-left: 5px solid #B22222;
+        }
+        
+        .card.wildcard {
+            border-left: 5px solid #9932CC;
+            background-color: #f0e6ff;
+        }
+        
+        #card-rules {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-width: 400px;
+        }
+        
+        #game-info {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+    </style>
 </head>
 <body>
     <h1>Risk Game Board</h1>
@@ -16,7 +71,17 @@
         <button id="action-btn" style="display: none;">End Attack Phase</button>
         <button id="restart-btn">Restart Game</button>
     </div>
+    <!-- Bot action notification area -->
+    <div id="bot-action"></div>
     <div id="mynetwork"></div>
+    <div id="game-info">
+        <div id="player-hand-container">
+            <h3>Your Cards</h3>
+            <button id="trade-in-btn" style="display: none;">Trade In Cards</button>
+            <div id="player-hand"></div>
+        </div>
+        <div id="card-rules"></div>
+    </div>
     <script type="text/javascript" src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
